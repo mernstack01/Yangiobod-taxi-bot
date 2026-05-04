@@ -1,6 +1,7 @@
 import { Conversation } from '@grammyjs/conversations';
 import { InlineKeyboard, Keyboard } from 'grammy';
 import { ConfigService } from '@nestjs/config';
+import { UserRole } from '@prisma/client';
 import { BotContext } from '../bot.context';
 import { DriversService } from '../../drivers/drivers.service';
 import { UsersService } from '../../users/users.service';
@@ -201,7 +202,7 @@ export function createRegisterDriverScene(
     );
 
     await conversation.external(() =>
-      usersService.setRole(user.id, 'DRIVER' as any),
+      usersService.setRole(user.id, UserRole.DRIVER),
     );
 
     if (phone) {

@@ -495,7 +495,7 @@ export class BotUpdate implements OnModuleInit {
           `👤 ${client.firstName}${client.lastName ? ' ' + client.lastName : ''}` +
           `${client.username ? ` (@${client.username})` : ''}\n` +
           `📍 ${listing.from.name} → ${listing.to.name}\n` +
-          (listing.passengerCount > 0 ? `👥 ${listing.passengerCount} kishi\n` : '📦 Faqat pochta\n') +
+          (listing.parcelOnly ? '📦 Faqat pochta\n' : `👥 ${listing.passengerCount} kishi\n`) +
           (listing.priceOffer ? `💰 ${listing.priceOffer.toLocaleString()} so'm\n` : '') +
           '\n' +
           (client.phone

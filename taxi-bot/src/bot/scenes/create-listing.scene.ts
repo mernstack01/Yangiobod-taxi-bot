@@ -74,10 +74,6 @@ export function createRequestTaxiScene(
     await fromCtx.editMessageText(`✅ Qayerdan: <b>${fromLoc.name}</b>`, { parse_mode: 'HTML' });
 
     // ── Step 2: To location ──────────────────────────────────────────────────
-    const toKb = buildLocationsKeyboard(locations, 'req_to', fromId)
-      .row()
-      .text('❌ Bekor qilish', 'req_cancel');
-
     await ctx.reply('Qayerga borasiz?', { reply_markup: toQb(locations, fromId) });
 
     const toCtx = await conversation.waitForCallbackQuery(/^req_to:.+$|^req_cancel$/);
@@ -322,7 +318,7 @@ export function createRequestTaxiScene(
         clientId: user.id,
         fromId,
         toId,
-        passengerCount: parcelOnly ? 1 : passengerCount,
+        passengerCount,
         acceptsParcel: parcelOnly ? true : acceptsParcel,
         parcelOnly,
         needTime,
