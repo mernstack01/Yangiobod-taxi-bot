@@ -1,0 +1,264 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ──────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  CLIENT
+  DRIVER
+  ADMIN
+}
+
+// Driver registration / approval status (was DriverStatus before refactor)
+enum RegistrationStatus {
+  PENDING
+  ACTIVE
+  BLOCKED
+}
+
+// Driver's real-time availability for dispatching
+enum DriverStatus {
+  OFFLINE
+  AVAILABLE
+  ON_TRIP
+  BREAK
+}
+
+// Client request status
+enum ListingStatus {
+  ACTIVE
+  MATCHED
+  CLOSED
+  EXPIRED
+  CANCELLED
+}
+
+// When does the client need the taxi
+enum NeedTime {
+  NOW
+  IN_15_MIN
+  IN_30_MIN
+  IN_1_HOUR
+  SCHEDULED
+}
+
+enum LocationTier {
+  CENTER
+  CITY
+  VILLAGE
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  ADMIN
+  MODERATOR
+}
+
+// ─── Models ─────────────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(cuid())
+  telegramId   BigInt    @unique @map("telegram_id")
+  username     String?
+  firstName    String    @map("first_name")
+  lastName     String?   @map("last_name")
+  phone        String?
+  role         UserRole  @default(CLIENT)
+  isBlocked    Boolean   @default(false) @map("is_blocked")
+  lastActiveAt DateTime? @map("last_active_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  driver        Driver?
+  listings      Listing[]
+  subscriptions Subscription[]
+  blockHistory  BlockHistory[]
+
+  @@map("users")
+}
+
+model Driver {
+  id        String             @id @default(cuid())
+  userId    String             @unique @map("user_id")
+  carModel  String             @map("car_model")
+  carNumber String             @map("car_number")
+  carColor  String?            @map("car_color")
+  status    RegistrationStatus @default(PENDING)
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+
+  // Real-time availability fields
+  currentStatus     DriverStatus @default(OFFLINE) @map("current_status")
+  currentLocationId String?      @map("current_location_id")
+  availableSeats    Int          @default(0) @map("available_seats")
+  acceptsParcel     Boolean      @default(false) @map("accepts_parcel")
+  statusUpdatedAt   DateTime?    @map("status_updated_at")
+
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentLocation Location? @relation("DriverCurrentLoc", fields: [currentLocationId], references: [id])
+  matchedListings Listing[]  @relation("DriverMatchedListings")
+
+  @@map("drivers")
+}
+
+model Location {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  sortOrder Int          @default(0) @map("sort_order")
+  isActive  Boolean      @default(true) @map("is_active")
+  tier      LocationTier @default(CITY)
+
+  fromListings         Listing[]      @relation("ListingFrom")
+  toListings           Listing[]      @relation("ListingTo")
+  fromSubs             Subscription[] @relation("SubFrom")
+  toSubs               Subscription[] @relation("SubTo")
+  routesFrom           Route[]        @relation("RouteFrom")
+  routesTo             Route[]        @relation("RouteTo")
+  driversCurrentlyHere Driver[]       @relation("DriverCurrentLoc")
+  topic                Topic?
+
+  @@map("locations")
+}
+
+model Route {
+  id       String   @id @default(cuid())
+  fromId   String   @map("from_id")
+  from     Location @relation("RouteFrom", fields: [fromId], references: [id])
+  toId     String   @map("to_id")
+  to       Location @relation("RouteTo", fields: [toId], references: [id])
+  stops    String[]
+  isActive Boolean  @default(true) @map("is_active")
+
+  @@unique([fromId, toId])
+  @@map("routes")
+}
+
+model Listing {
+  id String @id @default(cuid())
+
+  clientId String
+  client   User   @relation(fields: [clientId], references: [id])
+
+  fromId String
+  from   Location @relation("ListingFrom", fields: [fromId], references: [id])
+  toId   String
+  to     Location @relation("ListingTo", fields: [toId], references: [id])
+
+  passengerCount Int     @default(1) @map("passenger_count")
+  acceptsParcel  Boolean @default(false) @map("accepts_parcel")
+  parcelOnly     Boolean @default(false) @map("parcel_only")
+
+  needTime    NeedTime  @default(NOW) @map("need_time")
+  scheduledAt DateTime? @map("scheduled_at")
+
+  priceOffer Int? @map("price_offer")
+
+  comment String? @db.Text
+
+  // Telegram super-group topic where this request was broadcast
+  topicId   Int? @map("topic_id")
+  messageId Int? @map("message_id")
+
+  matchedDriverId String?  @map("matched_driver_id")
+  matchedDriver   Driver?  @relation("DriverMatchedListings", fields: [matchedDriverId], references: [id])
+  matchedAt       DateTime? @map("matched_at")
+
+  status      ListingStatus @default(ACTIVE)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  expiresAt   DateTime      @map("expires_at")
+  closedAt    DateTime?     @map("closed_at")
+  closedReason String?      @map("closed_reason")
+
+  @@index([fromId, status, createdAt])
+  @@index([toId, status, createdAt])
+  @@map("listings")
+}
+
+model Subscription {
+  id             String   @id @default(cuid())
+  userId         String   @map("user_id")
+  fromLocationId String?  @map("from_location_id")
+  toLocationId   String?  @map("to_location_id")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  fromLocation Location? @relation("SubFrom", fields: [fromLocationId], references: [id])
+  toLocation   Location? @relation("SubTo", fields: [toLocationId], references: [id])
+
+  @@map("subscriptions")
+}
+
+model Topic {
+  id         String   @id @default(cuid())
+  locationId String   @unique @map("location_id")
+  location   Location @relation(fields: [locationId], references: [id])
+  topicId    Int      @map("topic_id")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("topics")
+}
+
+model GroupConfig {
+  id        String   @id @default(cuid())
+  groupId   BigInt   @unique @map("group_id")
+  groupName String   @map("group_name")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("group_configs")
+}
+
+model BlockHistory {
+  id          String    @id @default(cuid())
+  userId      String    @map("user_id")
+  blockedById String    @map("blocked_by_id")
+  blockedAt   DateTime  @default(now()) @map("blocked_at")
+  unblockedAt DateTime? @map("unblocked_at")
+  reason      String    @db.Text
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("block_history")
+}
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  name         String
+  role         AdminRole @default(ADMIN)
+  isActive     Boolean   @default(true) @map("is_active")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@map("admin_users")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  adminId   String   @map("admin_id")
+  action    String
+  targetId  String?  @map("target_id")
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("audit_logs")
+}
+
+model AppSetting {
+  key       String   @id
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("app_settings")
+}
