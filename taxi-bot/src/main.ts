@@ -14,8 +14,12 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   const adminUrl = app.get(ConfigService).get<string>('ADMIN_PANEL_URL', 'http://localhost:3001');
+  const allowedOrigins = [
+    adminUrl,
+    'https://yangiobod-taxi-bot.vercel.app',
+  ].filter(Boolean);
   app.enableCors({
-    origin: adminUrl,
+    origin: allowedOrigins,
     credentials: true,
   });
 
